@@ -211,7 +211,7 @@ def encode_tokens(tokenizer, string, bos=True, device=default_device):
         tokens = [tokenizer.bos_id()] + tokens
     return torch.tensor(tokens, dtype=torch.int, device=device)
 
-def _load_model(checkpoint_path, device, precision, use_tp):
+def _load_model(checkpoint_path, device, precision, use_tp, fp6_llm):
     use_cuda = 'cuda' in device
     with torch.device('meta'):
         model = Transformer.from_name(checkpoint_path.parent.name)
@@ -229,6 +229,11 @@ def _load_model(checkpoint_path, device, precision, use_tp):
         from quantize import WeightOnlyInt4QuantHandler
         simple_quantizer = WeightOnlyInt4QuantHandler(model, groupsize)
         model = simple_quantizer.convert_for_runtime()
+
+    if fp6_llm:
+        from torchao.quantization.fp6_llm import convert_fp6_llm
+
+        convert_fp6_llm(model)
 
     checkpoint = torch.load(str(checkpoint_path), mmap=True, weights_only=True)
     if "model" in checkpoint and "stories" in str(checkpoint_path):
@@ -271,6 +276,7 @@ def main(
     draft_checkpoint_path: Optional[Path] = None,
     speculate_k: int = 5,
     device=default_device,
+    fp6_llm: bool = False,
 ) -> None:
     """Generates text samples based on a pre-trained Transformer model and tokenizer.
     """
@@ -289,16 +295,16 @@ def main(
             print = lambda *args, **kwargs: None
 
     print(f"Using device={device}")
-    precision = torch.bfloat16
+    precision = torch.float16 if fp6_llm else torch.bfloat16
     is_speculative = draft_checkpoint_path is not None
     is_chat = "chat" in str(checkpoint_path)
 
     print("Loading model ...")
     t0 = time.time()
-    model = _load_model(checkpoint_path, device, precision, use_tp)
+    model = _load_model(checkpoint_path, device, precision, use_tp, fp6_llm)
 
     if is_speculative:
-        draft_model = _load_model(draft_checkpoint_path, device, precision, use_tp)
+        draft_model = _load_model(draft_checkpoint_path, device, precision, use_tp, fp6_llm)
     else:
         draft_model = None
 
@@ -427,10 +433,11 @@ if __name__ == '__main__':
     parser.add_argument('--speculate_k', type=int, default=5, help='Speculative execution depth.')
     parser.add_argument('--draft_checkpoint_path', type=Path, default=None, help='Draft checkpoint path.')
     parser.add_argument('--device', type=str, default=default_device, help='Device to use')
+    parser.add_argument('--fp6_llm', action='store_true', help='Whether to use FP6-LLM')
 
     args = parser.parse_args()
     main(
         args.prompt, args.interactive, args.num_samples, args.max_new_tokens, args.top_k,
         args.temperature, args.checkpoint_path, args.compile, args.compile_prefill, args.profile, args.draft_checkpoint_path,
-        args.speculate_k, args.device
+        args.speculate_k, args.device, args.fp6_llm,
     )
