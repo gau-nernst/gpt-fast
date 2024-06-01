@@ -322,6 +322,9 @@ def main(
         if is_speculative and use_tp: # and ("cuda" in device):
             torch._inductor.config.triton.cudagraph_trees = False # Bug with cudagraph trees in this case
 
+        if fp6_llm:
+            torch._inductor.config.triton.cudagraph_trees = False # Bug with cudagraph trees in this case
+
         if is_speculative:
             global model_forward, logits_to_prob
             model_forward = torch.compile(model_forward, mode="reduce-overhead", fullgraph=True)
