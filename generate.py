@@ -230,11 +230,6 @@ def _load_model(checkpoint_path, device, precision, use_tp, fp6_llm):
         simple_quantizer = WeightOnlyInt4QuantHandler(model, groupsize)
         model = simple_quantizer.convert_for_runtime()
 
-    if fp6_llm:
-        from torchao.quantization.fp6_llm import convert_fp6_llm
-
-        convert_fp6_llm(model)
-
     checkpoint = torch.load(str(checkpoint_path), mmap=True, weights_only=True)
     if "model" in checkpoint and "stories" in str(checkpoint_path):
         checkpoint = checkpoint["model"]
@@ -246,6 +241,12 @@ def _load_model(checkpoint_path, device, precision, use_tp, fp6_llm):
         apply_tp(model)
 
     model = model.to(device=device, dtype=precision)
+
+    if fp6_llm:
+        from torchao.quantization.fp6_llm import convert_fp6_llm
+
+        convert_fp6_llm(model)
+
     return model.eval()
 
 def _get_model_size(model):
